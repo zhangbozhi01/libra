@@ -42,7 +42,7 @@ pub async fn update_batch_instance(
             newer_config.replace_tag(updated_tag.clone()).unwrap();
             context
                 .cluster_swarm
-                .spawn_new_instance(newer_config, false)
+                .spawn_new_instance(newer_config, true)
         })
         .collect();
     let instances = try_join_all(futures).await?;
@@ -57,7 +57,7 @@ pub async fn update_batch_instance(
     // Add a timeout to have wait for validators back to healthy mode.
     // TODO: Replace this with a blocking health check.
     info!("Wait for the instance to sync up with peers");
-    time::delay_for(Duration::from_secs(20)).await;
+    time::delay_for(Duration::from_secs(60)).await;
     Ok(())
 }
 

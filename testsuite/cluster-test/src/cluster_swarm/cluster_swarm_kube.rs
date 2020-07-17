@@ -174,6 +174,8 @@ impl ClusterSwarmKube {
             cfg_fullnode_seed = cfg_fullnode_seed,
             fluentbit_enabled = fluentbit_enabled,
         );
+        info!("Validator spec");
+        info!("{}", pod_yaml);
         let pod_spec: serde_yaml::Value = serde_yaml::from_str(&pod_yaml)?;
         let pod_spec = serde_json::value::to_value(pod_spec)?;
         serde_json::from_value(pod_spec)
@@ -206,6 +208,8 @@ impl ClusterSwarmKube {
             cfg_fullnode_seed = CFG_FULLNODE_SEED,
             fluentbit_enabled = fluentbit_enabled,
         );
+        info!("Fullnode spec");
+        info!("{}", pod_yaml);
         let pod_spec: serde_yaml::Value = serde_yaml::from_str(&pod_yaml)?;
         let pod_spec = serde_json::value::to_value(pod_spec)?;
         serde_json::from_value(pod_spec)

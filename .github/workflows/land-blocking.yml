@@ -1,10 +1,10 @@
 ---
-name: Land-blocking Test
+name: CANARY Land-blocking Compat Test
 
 on:
   push:
     branches:
-      - auto
+      - cluster-test-report-compat-canary-nonbreaking
 
 jobs:
   build-and-run-cluster-test:
@@ -19,16 +19,8 @@ jobs:
         run: |
           echo "::set-env name=LIBRA_GIT_REV::$(git rev-parse --short=8 HEAD)"
           echo "::set-env name=TEST_TAG::land_$(git rev-parse --short=8 HEAD)"
-      - name: Check kill switch
-        id: check_ks
-        run: |
-          if ${{ secrets.KILL_SWITCH_LAND_BLOCKING_TEST }} || ! .circleci/should_run_lbt.sh ; then
-            echo "::set-output name=should_run::false";
-          else
-            echo "::set-output name=should_run::true";
-          fi;
+          echo "::set-env name=PREV_TAG::land_$(git rev-parse --short=8 origin/master)"
       - name: Build, tag and push images
-        if: steps.check_ks.outputs.should_run == 'true'
         run: |
           set +e
           date
@@ -49,19 +41,41 @@ jobs:
           done
           echo "Build failed after retries"
           exit 1
+      - name: Determine which cluster-test suite to run
+        run: |
+          set +e
+          commit_message=$(git log -1 --pretty=oneline)
+          echo $commit_message | grep '\[breaking\]'
+          if [ $? -eq 0 ]; then
+            echo "Breaking change detected! Will run land_blocking suite"
+            echo "::set-env name=TEST_COMPAT::0"
+          else
+            echo "Will run land_blocking_compat suite"
+            echo "::set-env name=TEST_COMPAT::1"
+          fi
       - name: Launch cluster test
-        if: steps.check_ks.outputs.should_run == 'true'
         # NOTE Remember to update PR comment payload if cti cmd is updated.
         run: |
           set +e
           date
           export CTI_OUTPUT_LOG=$(mktemp)
           echo "::set-env name=CTI_OUTPUT_LOG::$CTI_OUTPUT_LOG"
-          ./scripts/cti \
-            --tag ${TEST_TAG} \
-            -E RUST_LOG=debug \
-            --report report.json \
-            --suite land_blocking
+          if [ $TEST_COMPAT -eq 1 ]; then
+            ./scripts/cti \
+              --tag ${PREV_TAG} \
+              --cluster-test-tag ${TEST_TAG} \
+              -E RUST_LOG=debug \
+              -E BATCH_SIZE=15 \
+              -E UPDATE_TO_TAG=${TEST_TAG} \
+              --report report.json \
+              --suite land_blocking_compat
+          else
+            ./scripts/cti \
+              --tag ${TEST_TAG} \
+              -E RUST_LOG=debug \
+              --report report.json \
+              --suite land_blocking
+          fi
           ret=$?
           echo "::set-env name=CTI_EXIT_CODE::$ret"
           if [ -s "report.json" ]; then
@@ -71,29 +85,7 @@ jobs:
           else
             echo "report.json is empty or not found."
           fi
-          if [ $ret -ne 0 ]; then
-            jq -n \
-              --arg msg "*${{ github.job }}* job in ${{ github.workflow }} workflow failed.
-          $(tail -5 $CTI_OUTPUT_LOG)" \
-              --arg url "https://github.com/${{ github.repository }}/actions/runs/${{github.run_id}}" \
-            '{
-              "attachments": [
-                {
-                  "text": $msg,
-                  "actions": [
-                    {
-                      "type": "button",
-                      "text": "Visit Job",
-                      "url": $url
-                    }
-                  ]
-                }
-              ]
-            }' > /tmp/payload
-            curl -X POST -H 'Content-type: application/json' -d @/tmp/payload ${{ secrets.WEBHOOK_FLAKY_LAND_BLOCKING_CT }}
-          fi
       - name: Post test results on PR
-        if: steps.check_ks.outputs.should_run == 'true'
         uses: actions/github-script@0.4.0
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
@@ -108,7 +100,6 @@ jobs:
             } else {
               console.warn("Did not find pull request num in commit message. -\\_(O_o)_/-");
               console.log("GH event payload\n", context.payload);
-              return;
             }
             // Read and check cluster test results
             let should_fail = false;
@@ -160,7 +151,6 @@ jobs:
                 }
               } else {
                 body += "\n Cluster Test failed - test report processing failed.";
-                console.error(err);
               }
               body += " See https://github.com/libra/libra/actions/runs/${{github.run_id}}";
               // Post comment on PR then fail this workflow
@@ -180,25 +170,7 @@ jobs:
                 body += err;
               }
             }
-            // Post test result on original pull request
-            try {
-              await github.issues.createComment(
-                  {
-                    issue_number: pr_num,
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    body: body,
-                  }
-              );
-            } catch (err) {
-              if (err.status === 401) {
-                // Fail silently for auth but log to console.
-                console.warn("GH token has expired when trying to POST\n", err);
-              } else {
-                console.error("HttpError other than 401 is not bypassed");
-                throw err;
-              }
-            }
+            console.log(body);
             // Fail the workflow if test fails or perf regresses
             if (should_fail) {
               throw "Land-blocking test failed";
