@@ -8,6 +8,7 @@ use crate::{
 use libra_crypto::{ed25519::Ed25519PublicKey, x25519};
 use libra_management::error::Error;
 use libra_secure_json_rpc::VMStatusView;
+use libra_types::account_address::AccountAddress;
 use serde::Serialize;
 use structopt::StructOpt;
 
@@ -22,6 +23,8 @@ pub enum Command {
     ExtractPublicKey(crate::keys::ExtractPublicKey),
     #[structopt(about = "Set the waypoint in the validator storage")]
     InsertWaypoint(crate::waypoint::InsertWaypoint),
+    #[structopt(about = "Prints an account from the validator storage")]
+    PrintAccount(crate::account::PrintAccount),
     #[structopt(about = "Remove a validator from ValidatorSet")]
     RemoveValidator(crate::governance::RemoveValidator),
     #[structopt(about = "Rotates the consensus key for a validator")]
@@ -48,6 +51,7 @@ pub enum CommandName {
     ExtractPrivateKey,
     ExtractPublicKey,
     InsertWaypoint,
+    PrintAccount,
     RemoveValidator,
     RotateConsensusKey,
     RotateOperatorKey,
@@ -66,6 +70,7 @@ impl From<&Command> for CommandName {
             Command::ExtractPrivateKey(_) => CommandName::ExtractPrivateKey,
             Command::ExtractPublicKey(_) => CommandName::ExtractPublicKey,
             Command::InsertWaypoint(_) => CommandName::InsertWaypoint,
+            Command::PrintAccount(_) => CommandName::PrintAccount,
             Command::RemoveValidator(_) => CommandName::RemoveValidator,
             Command::RotateConsensusKey(_) => CommandName::RotateConsensusKey,
             Command::RotateOperatorKey(_) => CommandName::RotateOperatorKey,
@@ -86,6 +91,7 @@ impl std::fmt::Display for CommandName {
             CommandName::ExtractPrivateKey => "extract-private-key",
             CommandName::ExtractPublicKey => "extract-public-key",
             CommandName::InsertWaypoint => "insert-waypoint",
+            CommandName::PrintAccount => "print-account",
             CommandName::RemoveValidator => "remove-validator",
             CommandName::RotateConsensusKey => "rotate-consensus-key",
             CommandName::RotateOperatorKey => "rotate-operator-key",
@@ -107,6 +113,7 @@ impl Command {
             Command::InsertWaypoint(cmd) => Self::print_success(cmd.execute()),
             Command::ExtractPrivateKey(cmd) => Self::print_success(cmd.execute()),
             Command::ExtractPublicKey(cmd) => Self::print_success(cmd.execute()),
+            Command::PrintAccount(cmd) => Self::pretty_print(cmd.execute()),
             Command::RemoveValidator(cmd) => Self::pretty_print(cmd.execute()),
             Command::RotateConsensusKey(cmd) => Self::print_transaction_context(cmd.execute()),
             Command::RotateOperatorKey(cmd) => Self::print_transaction_context(cmd.execute()),
@@ -178,6 +185,13 @@ impl Command {
         match self {
             Command::InsertWaypoint(cmd) => cmd.execute(),
             _ => Err(self.unexpected_command(CommandName::InsertWaypoint)),
+        }
+    }
+
+    pub fn print_account(self) -> Result<AccountAddress, Error> {
+        match self {
+            Command::PrintAccount(cmd) => cmd.execute(),
+            _ => Err(self.unexpected_command(CommandName::PrintAccount)),
         }
     }
 
