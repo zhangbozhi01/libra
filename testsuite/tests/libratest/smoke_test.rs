@@ -1533,7 +1533,15 @@ fn test_consensus_key_rotation() {
     let info_consensus_key = op_tool.validator_set(validator_account).unwrap()[0]
         .consensus_public_key
         .clone();
-    assert_eq!(new_consensus_key, info_consensus_key)
+    assert_eq!(new_consensus_key, info_consensus_key);
+
+    // Rotate the consensus key in storage manually and perform another rotation using the op_tool.
+    // Here, we expected the op_tool to see that the consensus key in storage doesn't match the one
+    // on-chain, and thus it should simply forward a transaction to the blockchain.
+    let mut storage: Storage = (&backend).try_into().unwrap();
+    let rotated_consensus_key = storage.rotate_key(CONSENSUS_KEY).unwrap();
+    let (_txn_ctx, new_consensus_key) = op_tool.rotate_consensus_key(&backend).unwrap();
+    assert_eq!(rotated_consensus_key, new_consensus_key);
 }
 
 #[test]
@@ -1625,7 +1633,13 @@ fn test_network_key_rotation() {
 }
 
 #[test]
-fn test_stop_consensus() {
+/// This test verifies the flow of a genesis transaction after the chain starts.
+/// 1. test the consensus sync_only mode, every node should stop at the same version.
+/// 2. test the db-bootstrapper apply a manual genesis transaction (remove validator 0) on libradb directly
+/// 3. test the nodes and clients resume working after updating waypoint
+/// 4. test a node lag behind can sync to the waypoint
+fn test_genesis_transaction_flow() {
+    let _ = workspace_builder::get_bin("db-bootstrapper");
     let mut env = TestEnvironment::new(4);
     println!("1. set stop_consensus = true for the first node and check it can sync to others");
     let config_path = env.validator_swarm.config.config_files.first().unwrap();
